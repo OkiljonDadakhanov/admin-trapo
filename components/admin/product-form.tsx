@@ -1,20 +1,22 @@
 "use client"
 
 import type React from "react"
-
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { AlertCircle } from "lucide-react"
-import { apiClient } from "@/lib/api-client"
+import { AlertCircle, X } from "lucide-react"
+import { apiClient, type Product } from "@/lib/api-client"
 
 interface ProductFormProps {
+  product?: Product | null
   onSuccess: () => void
   onCancel: () => void
 }
 
-export function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
+export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) {
+  const isEditMode = !!product
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -28,6 +30,22 @@ export function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
   })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (product) {
+      setFormData({
+        name: product.name,
+        description: product.description || "",
+        price: product.price.toString(),
+        category: product.category,
+        stock: product.stock.toString(),
+        image: product.image || "",
+        colors: product.colors?.join(", ") || "",
+        sizes: product.sizes?.join(", ") || "",
+        inStock: product.inStock,
+      })
+    }
+  }, [product])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target
@@ -48,7 +66,6 @@ export function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
 
     try {
       setIsLoading(true)
-      // Parse colors and sizes from comma-separated strings
       const colors = formData.colors
         .split(",")
         .map((c) => c.trim())
@@ -58,30 +75,48 @@ export function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
         .map((s) => s.trim())
         .filter((s) => s.length > 0)
 
-      await apiClient.createProduct({
+      const productData = {
         name: formData.name,
         description: formData.description,
         price: Number.parseFloat(formData.price),
         category: formData.category,
         stock: Number.parseInt(formData.stock),
-        image: formData.image,
-        colors: colors,
-        sizes: sizes,
+        image: formData.image || undefined,
+        colors,
+        sizes,
         inStock: formData.inStock,
-      })
+      }
+
+      if (isEditMode && product) {
+        await apiClient.updateProduct(product._id, productData)
+      } else {
+        await apiClient.createProduct(productData)
+      }
       onSuccess()
     } catch (err) {
-      setError("Failed to create product")
-      console.error("Error creating product:", err)
+      setError(isEditMode ? "Failed to update product" : "Failed to create product")
+      console.error("Error saving product:", err)
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Card className="p-6 bg-muted/50">
+    <Card className="p-6 bg-muted/50 relative">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onCancel}
+        className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+      >
+        <X className="w-4 h-4" />
+      </Button>
+
       <form onSubmit={handleSubmit} className="space-y-4">
-        <h3 className="text-lg font-semibold text-foreground">Add New Product</h3>
+        <h3 className="text-lg font-semibold text-foreground">
+          {isEditMode ? "Edit Product" : "Add New Product"}
+        </h3>
 
         {error && (
           <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
@@ -215,7 +250,13 @@ export function ProductForm({ onSuccess, onCancel }: ProductFormProps) {
             Cancel
           </Button>
           <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Creating..." : "Create Product"}
+            {isLoading
+              ? isEditMode
+                ? "Updating..."
+                : "Creating..."
+              : isEditMode
+                ? "Update Product"
+                : "Create Product"}
           </Button>
         </div>
       </form>

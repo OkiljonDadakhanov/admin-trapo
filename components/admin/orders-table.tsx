@@ -1,13 +1,15 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search, AlertCircle } from "lucide-react"
-import { apiClient, type Order } from "@/lib/api-client"
+import { Search, AlertCircle, RefreshCw } from "lucide-react"
+import { apiClient, type Order, type PaginatedResponse } from "@/lib/api-client"
 import { OrderStatusDropdown } from "./order-status-dropdown"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "./pagination"
 
 const statusColors = {
   ordered: "bg-yellow-100 text-yellow-800",
@@ -22,33 +24,70 @@ export function OrdersTable() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchOrders = async () => {
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [isPaginated, setIsPaginated] = useState(false)
+
+  // Debounce search term
+  const debouncedSearch = useDebounce(searchTerm, 300)
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // Try paginated endpoint first
       try {
-        setIsLoading(true)
-        setError(null)
+        const response: PaginatedResponse<Order> = await apiClient.getOrdersPaginated({
+          page: currentPage,
+          limit: itemsPerPage,
+          search: debouncedSearch || undefined,
+          status: selectedStatus || undefined,
+        })
+        setOrders(response.data)
+        setTotalItems(response.pagination.total)
+        setTotalPages(response.pagination.totalPages)
+        setIsPaginated(true)
+      } catch {
+        // Fallback to non-paginated endpoint
         const data = await apiClient.getAllOrders()
-        setOrders(data)
-      } catch (err) {
-        setError("Failed to load orders. Make sure the backend is running.")
-        console.error("Error fetching orders:", err)
-      } finally {
-        setIsLoading(false)
+        // Client-side filtering and pagination
+        let filtered = data
+        if (debouncedSearch) {
+          filtered = filtered.filter(
+            (order) =>
+              order.orderNumber.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+              order.customerInfo.name.toLowerCase().includes(debouncedSearch.toLowerCase())
+          )
+        }
+        if (selectedStatus) {
+          filtered = filtered.filter((order) => order.status === selectedStatus)
+        }
+        setTotalItems(filtered.length)
+        setTotalPages(Math.ceil(filtered.length / itemsPerPage))
+        const start = (currentPage - 1) * itemsPerPage
+        setOrders(filtered.slice(start, start + itemsPerPage))
+        setIsPaginated(false)
       }
+    } catch (err) {
+      setError("Failed to load orders. Make sure the backend is running.")
+      console.error("Error fetching orders:", err)
+    } finally {
+      setIsLoading(false)
     }
+  }, [currentPage, itemsPerPage, debouncedSearch, selectedStatus])
 
+  useEffect(() => {
     fetchOrders()
-  }, [])
+  }, [fetchOrders])
 
-  const filteredOrders = useMemo(() => {
-    return orders.filter((order) => {
-      const matchesSearch =
-        order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.customerInfo.name.toLowerCase().includes(searchTerm.toLowerCase())
-      const matchesStatus = !selectedStatus || order.status === selectedStatus
-      return matchesSearch && matchesStatus
-    })
-  }, [orders, searchTerm, selectedStatus])
+  // Reset to page 1 when search or status filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch, selectedStatus])
 
   const handleStatusChange = async (orderId: string, newStatus: "ordered" | "shipped" | "completed", note?: string) => {
     try {
@@ -61,7 +100,16 @@ export function OrdersTable() {
     }
   }
 
-  if (isLoading) {
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
+  const handleItemsPerPageChange = (limit: number) => {
+    setItemsPerPage(limit)
+    setCurrentPage(1)
+  }
+
+  if (isLoading && orders.length === 0) {
     return (
       <Card className="p-6">
         <div className="flex items-center justify-center h-64">
@@ -84,7 +132,7 @@ export function OrdersTable() {
           </div>
         )}
 
-        <div className="flex gap-4">
+        <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
@@ -94,7 +142,7 @@ export function OrdersTable() {
               className="pl-10"
             />
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button
               variant={selectedStatus === null ? "default" : "outline"}
               onClick={() => setSelectedStatus(null)}
@@ -123,6 +171,14 @@ export function OrdersTable() {
             >
               Completed
             </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => fetchOrders()}
+              disabled={isLoading}
+            >
+              <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
         </div>
 
@@ -139,8 +195,8 @@ export function OrdersTable() {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.length > 0 ? (
-                filteredOrders.map((order) => (
+              {orders.length > 0 ? (
+                orders.map((order) => (
                   <tr key={order._id} className="border-b border-border hover:bg-muted/50 transition-colors">
                     <td className="py-4 px-4 text-sm font-medium text-foreground">{order.orderNumber}</td>
                     <td className="py-4 px-4 text-sm text-foreground">{order.customerInfo.name}</td>
@@ -171,11 +227,14 @@ export function OrdersTable() {
           </table>
         </div>
 
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredOrders.length} of {orders.length} orders
-          </p>
-        </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={itemsPerPage}
+          onPageChange={handlePageChange}
+          onItemsPerPageChange={handleItemsPerPageChange}
+        />
       </div>
     </Card>
   )

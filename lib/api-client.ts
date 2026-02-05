@@ -71,6 +71,25 @@ export interface DashboardStats {
   }>
 }
 
+export interface PaginatedResponse<T> {
+  data: T[]
+  pagination: {
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
+}
+
+export interface PaginationParams {
+  page?: number
+  limit?: number
+  search?: string
+  status?: string
+  sortBy?: string
+  sortOrder?: 'asc' | 'desc'
+}
+
 class ApiClient {
   private baseUrl: string
 
@@ -122,12 +141,30 @@ class ApiClient {
   }
 
   // Admin Orders
-  async getAllOrders(): Promise<Order[]> {
-    return this.request<Order[]>("/api/admin/orders")
+  async getAllOrders(params?: PaginationParams): Promise<Order[]> {
+    const queryString = this.buildQueryString(params)
+    return this.request<Order[]>(`/api/admin/orders${queryString}`)
+  }
+
+  async getOrdersPaginated(params?: PaginationParams): Promise<PaginatedResponse<Order>> {
+    const queryString = this.buildQueryString({ ...params, paginated: true })
+    return this.request<PaginatedResponse<Order>>(`/api/admin/orders${queryString}`)
   }
 
   async getOrderById(id: string): Promise<Order> {
     return this.request<Order>(`/api/admin/orders/${id}`)
+  }
+
+  private buildQueryString(params?: Record<string, unknown>): string {
+    if (!params) return ""
+    const searchParams = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== "") {
+        searchParams.append(key, String(value))
+      }
+    })
+    const query = searchParams.toString()
+    return query ? `?${query}` : ""
   }
 
   async updateOrderStatus(
@@ -142,8 +179,14 @@ class ApiClient {
   }
 
   // Products
-  async getAllProducts(): Promise<Product[]> {
-    return this.request<Product[]>("/api/products")
+  async getAllProducts(params?: PaginationParams): Promise<Product[]> {
+    const queryString = this.buildQueryString(params)
+    return this.request<Product[]>(`/api/products${queryString}`)
+  }
+
+  async getProductsPaginated(params?: PaginationParams): Promise<PaginatedResponse<Product>> {
+    const queryString = this.buildQueryString({ ...params, paginated: true })
+    return this.request<PaginatedResponse<Product>>(`/api/products${queryString}`)
   }
 
   async getProductById(id: string): Promise<Product> {

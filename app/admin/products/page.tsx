@@ -28,9 +28,18 @@ export default function ProductsPage() {
         </Button>
       </div>
 
-      {showForm && <ProductForm onSuccess={handleProductAdded} onCancel={() => setShowForm(false)} />}
+      {showForm && (
+        <ProductForm
+          product={null}
+          onSuccess={handleProductAdded}
+          onCancel={() => setShowForm(false)}
+        />
+      )}
 
-      <ProductsTable refreshTrigger={refreshTrigger} onProductUpdated={() => setRefreshTrigger((prev) => prev + 1)} />
+      <ProductsTable
+        refreshTrigger={refreshTrigger}
+        onProductUpdated={() => setRefreshTrigger((prev) => prev + 1)}
+      />
     </div>
   )
 }

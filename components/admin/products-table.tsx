@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Search, Trash2, Edit2, AlertCircle } from "lucide-react"
-import { apiClient, type Product } from "@/lib/api-client"
+import { Search, Trash2, Edit2, AlertCircle, RefreshCw } from "lucide-react"
+import { apiClient, type Product, type PaginatedResponse } from "@/lib/api-client"
+import { useDebounce } from "@/hooks/use-debounce"
+import { Pagination } from "./pagination"
+import { ProductForm } from "./product-form"
 
 interface ProductsTableProps {
   refreshTrigger: number
@@ -18,32 +21,68 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [isPaginated, setIsPaginated] = useState(false)
+
+  // Debounce search term
+  const debouncedSearch = useDebounce(searchTerm, 300)
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      setError(null)
+
+      // Try paginated endpoint first
+      try {
+        const response: PaginatedResponse<Product> = await apiClient.getProductsPaginated({
+          page: currentPage,
+          limit: itemsPerPage,
+          search: debouncedSearch || undefined,
+        })
+        setProducts(response.data)
+        setTotalItems(response.pagination.total)
+        setTotalPages(response.pagination.totalPages)
+        setIsPaginated(true)
+      } catch {
+        // Fallback to non-paginated endpoint
+        const data = await apiClient.getAllProducts()
+        // Client-side filtering and pagination
+        let filtered = data
+        if (debouncedSearch) {
+          filtered = data.filter(
+            (product) =>
+              product.name.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+              product.category.toLowerCase().includes(debouncedSearch.toLowerCase())
+          )
+        }
+        setTotalItems(filtered.length)
+        setTotalPages(Math.ceil(filtered.length / itemsPerPage))
+        const start = (currentPage - 1) * itemsPerPage
+        setProducts(filtered.slice(start, start + itemsPerPage))
+        setIsPaginated(false)
+      }
+    } catch (err) {
+      setError("Failed to load products")
+      console.error("Error fetching products:", err)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [currentPage, itemsPerPage, debouncedSearch])
 
   useEffect(() => {
-    const fetchProducts = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        const data = await apiClient.getAllProducts()
-        setProducts(data)
-      } catch (err) {
-        setError("Failed to load products")
-        console.error("Error fetching products:", err)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     fetchProducts()
-  }, [refreshTrigger])
+  }, [fetchProducts, refreshTrigger])
 
-  const filteredProducts = useMemo(() => {
-    return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        product.category.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-  }, [products, searchTerm])
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [debouncedSearch])
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this product?")) return
@@ -51,8 +90,8 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
     try {
       setDeletingId(id)
       await apiClient.deleteProduct(id)
-      setProducts(products.filter((p) => p._id !== id))
       onProductUpdated()
+      fetchProducts()
     } catch (err) {
       console.error("Error deleting product:", err)
       setError("Failed to delete product")
@@ -61,7 +100,36 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
     }
   }
 
-  if (isLoading) {
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product)
+  }
+
+  const handleEditSuccess = () => {
+    setEditingProduct(null)
+    onProductUpdated()
+    fetchProducts()
+  }
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
+  const handleItemsPerPageChange = (limit: number) => {
+    setItemsPerPage(limit)
+    setCurrentPage(1)
+  }
+
+  if (editingProduct) {
+    return (
+      <ProductForm
+        product={editingProduct}
+        onSuccess={handleEditSuccess}
+        onCancel={() => setEditingProduct(null)}
+      />
+    )
+  }
+
+  if (isLoading && products.length === 0) {
     return (
       <Card className="p-6">
         <div className="flex items-center justify-center h-64">
@@ -84,14 +152,24 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
           </div>
         )}
 
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="Search products..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10"
-          />
+        <div className="flex gap-4 items-center">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search products..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => fetchProducts()}
+            disabled={isLoading}
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin" : ""}`} />
+          </Button>
         </div>
 
         <div className="overflow-x-auto">
@@ -106,15 +184,25 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
               </tr>
             </thead>
             <tbody>
-              {filteredProducts.length > 0 ? (
-                filteredProducts.map((product) => (
+              {products.length > 0 ? (
+                products.map((product) => (
                   <tr key={product._id} className="border-b border-border hover:bg-muted/50 transition-colors">
                     <td className="py-4 px-4 text-sm font-medium text-foreground">{product.name}</td>
                     <td className="py-4 px-4 text-sm text-muted-foreground">{product.category}</td>
                     <td className="py-4 px-4 text-sm font-semibold text-foreground">${product.price.toFixed(2)}</td>
-                    <td className="py-4 px-4 text-sm text-foreground">{product.stock}</td>
+                    <td className="py-4 px-4 text-sm text-foreground">
+                      <span className={product.stock <= 5 ? "text-red-500 font-medium" : ""}>
+                        {product.stock}
+                        {product.stock <= 5 && " (Low)"}
+                      </span>
+                    </td>
                     <td className="py-4 px-4 flex gap-2">
-                      <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(product)}
+                        className="text-blue-600 hover:text-blue-700"
+                      >
                         <Edit2 className="w-4 h-4" />
                       </Button>
                       <Button
@@ -140,11 +228,14 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
           </table>
         </div>
 
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredProducts.length} of {products.length} products
-          </p>
-        </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalItems}
+          itemsPerPage={itemsPerPage}
+          onPageChange={handlePageChange}
+          onItemsPerPageChange={handleItemsPerPageChange}
+        />
       </div>
     </Card>
   )
