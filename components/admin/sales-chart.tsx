@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import { AlertCircle } from "lucide-react"
@@ -16,53 +16,63 @@ export function SalesChart() {
   const [chartData, setChartData] = useState<ChartData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isMounted = useRef(true)
 
-  useEffect(() => {
-    const fetchAndProcessOrders = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        const orders = await apiClient.getAllOrders()
+  const fetchAndProcessOrders = useCallback(async () => {
+    try {
+      setError(null)
+      const orders = await apiClient.getAllOrders()
 
-        const dailyData: Record<string, { sales: number; orders: number }> = {}
+      const dailyData: Record<string, { sales: number; orders: number }> = {}
 
-        orders.forEach((order: Order) => {
-          const date = new Date(order.createdAt).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          })
-
-          if (!dailyData[date]) {
-            dailyData[date] = { sales: 0, orders: 0 }
-          }
-
-          dailyData[date].sales += order.payment.total
-          dailyData[date].orders += 1
+      orders.forEach((order: Order) => {
+        const date = new Date(order.createdAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
         })
 
-        const data = Object.entries(dailyData)
-          .map(([date, { sales, orders }]) => ({
-            date,
-            sales: Math.round(sales * 100) / 100,
-            orders,
-          }))
-          .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-          .slice(-7) // Last 7 days
+        if (!dailyData[date]) {
+          dailyData[date] = { sales: 0, orders: 0 }
+        }
 
+        dailyData[date].sales += order.total
+        dailyData[date].orders += 1
+      })
+
+      const data = Object.entries(dailyData)
+        .map(([date, { sales, orders }]) => ({
+          date,
+          sales: Math.round(sales * 100) / 100,
+          orders,
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(-7) // Last 7 days
+
+      if (isMounted.current) {
         setChartData(data.length > 0 ? data : [])
-      } catch (err) {
+      }
+    } catch (err) {
+      if (isMounted.current) {
         setError("Failed to load sales data")
         console.error("Error fetching sales data:", err)
-      } finally {
+      }
+    } finally {
+      if (isMounted.current) {
         setIsLoading(false)
       }
     }
+  }, [])
 
+  useEffect(() => {
+    isMounted.current = true
     fetchAndProcessOrders()
 
     const interval = setInterval(fetchAndProcessOrders, 60000)
-    return () => clearInterval(interval)
-  }, [])
+    return () => {
+      isMounted.current = false
+      clearInterval(interval)
+    }
+  }, [fetchAndProcessOrders])
 
   if (error) {
     return (

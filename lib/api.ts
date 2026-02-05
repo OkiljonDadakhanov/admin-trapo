@@ -46,6 +46,16 @@ class AuthAPI {
     })
 
     if (!response.ok) {
+      // Handle authentication errors
+      if (response.status === 401) {
+        // Clear invalid token
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("token")
+        }
+        throw new Error("Authentication failed. Please log in again.")
+      }
+      
+      // Handle other errors
       const error = await response.json().catch(() => ({ message: response.statusText }))
       throw new Error(error.message || `API Error: ${response.statusText}`)
     }

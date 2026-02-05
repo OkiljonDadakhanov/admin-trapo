@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,7 +14,6 @@ interface ProductsTableProps {
 
 export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTableProps) {
   const [products, setProducts] = useState<Product[]>([])
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,13 +37,12 @@ export function ProductsTable({ refreshTrigger, onProductUpdated }: ProductsTabl
     fetchProducts()
   }, [refreshTrigger])
 
-  useEffect(() => {
-    const filtered = products.filter(
+  const filteredProducts = useMemo(() => {
+    return products.filter(
       (product) =>
         product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         product.category.toLowerCase().includes(searchTerm.toLowerCase()),
     )
-    setFilteredProducts(filtered)
   }, [products, searchTerm])
 
   const handleDelete = async (id: string) => {

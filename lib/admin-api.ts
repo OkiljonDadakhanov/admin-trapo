@@ -1,16 +1,18 @@
-// API client for communicating with Express backend
+// Admin API client for admin-specific endpoints
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
 
-export interface User {
+export interface AdminUser {
   _id: string
   name: string
   email: string
-  role?: string
+  role: 'admin' | 'super_admin'
+  createdAt: string
+  updatedAt: string
 }
 
-export interface AuthResponse {
-  token: string
-  user: User
+export interface AdminAuthResponse {
+  adminToken: string
+  admin: AdminUser
 }
 
 export interface Order {
@@ -45,21 +47,6 @@ export interface Order {
   updatedAt: string
 }
 
-export interface Product {
-  _id: string
-  name: string
-  description: string
-  price: number
-  category: string
-  image?: string
-  stock: number
-  colors: string[]
-  sizes: string[]
-  inStock: boolean
-  createdAt: string
-  updatedAt: string
-}
-
 export interface DashboardStats {
   totalOrders: number
   totalRevenue: number
@@ -71,7 +58,7 @@ export interface DashboardStats {
   }>
 }
 
-class ApiClient {
+class AdminAPI {
   private baseUrl: string
 
   constructor(baseUrl: string) {
@@ -121,7 +108,31 @@ class ApiClient {
     return response.json()
   }
 
-  // Admin Orders
+  // Admin Authentication endpoints
+  async registerAdmin(name: string, email: string, password: string): Promise<AdminAuthResponse> {
+    return this.request<AdminAuthResponse>("/api/admin/register", {
+      method: "POST",
+      body: JSON.stringify({ name, email, password }),
+    })
+  }
+
+  async loginAdmin(email: string, password: string): Promise<AdminAuthResponse> {
+    return this.request<AdminAuthResponse>("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    })
+  }
+
+  async getCurrentAdmin(): Promise<AdminUser> {
+    return this.request<AdminUser>("/api/admin/profile")
+  }
+
+  // Admin Dashboard endpoints
+  async getDashboardStats(): Promise<DashboardStats> {
+    return this.request<DashboardStats>("/api/admin/dashboard")
+  }
+
+  // Admin Orders endpoints
   async getAllOrders(): Promise<Order[]> {
     return this.request<Order[]>("/api/admin/orders")
   }
@@ -141,59 +152,21 @@ class ApiClient {
     })
   }
 
-  // Products
-  async getAllProducts(): Promise<Product[]> {
-    return this.request<Product[]>("/api/products")
+  // Admin Users endpoints
+  async getAllUsers(): Promise<AdminUser[]> {
+    return this.request<AdminUser[]>("/api/admin/users")
   }
 
-  async getProductById(id: string): Promise<Product> {
-    return this.request<Product>(`/api/products/${id}`)
+  async getUserById(id: string): Promise<AdminUser> {
+    return this.request<AdminUser>(`/api/admin/users/${id}`)
   }
 
-  async createProduct(
-    product: Omit<Product, "_id" | "createdAt" | "updatedAt"> & { 
-      colors?: string[]; 
-      sizes?: string[]; 
-      inStock?: boolean;
-      image?: string;
+  // Logout
+  async logoutAdmin(): Promise<void> {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("adminToken")
     }
-  ): Promise<Product> {
-    return this.request<Product>("/api/products", {
-      method: "POST",
-      body: JSON.stringify(product),
-    })
-  }
-
-  async updateProduct(
-    id: string,
-    product: Partial<Omit<Product, "_id" | "createdAt" | "updatedAt">>,
-  ): Promise<Product> {
-    return this.request<Product>(`/api/products/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(product),
-    })
-  }
-
-  async deleteProduct(id: string): Promise<void> {
-    return this.request<void>(`/api/products/${id}`, {
-      method: "DELETE",
-    })
-  }
-
-  // Admin Dashboard
-  async getDashboardStats(): Promise<DashboardStats> {
-    return this.request<DashboardStats>("/api/admin/dashboard")
-  }
-
-  // Admin Users
-  async getAllUsers(): Promise<User[]> {
-    return this.request<User[]>("/api/admin/users")
-  }
-
-  // Health check
-  async healthCheck(): Promise<{ status: string }> {
-    return this.request<{ status: string }>("/api/health")
   }
 }
 
-export const apiClient = new ApiClient(API_BASE_URL)
+export const adminAPI = new AdminAPI(API_BASE_URL)

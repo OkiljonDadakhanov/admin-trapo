@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AlertCircle } from "lucide-react"
@@ -16,35 +16,38 @@ export function RecentOrders() {
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isMounted = useRef(true)
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
-        setIsLoading(true)
-        setError(null)
-        // Try admin endpoint first, fallback to regular endpoint
-        let data
-        try {
-          data = await apiClient.getAllOrdersAdmin()
-        } catch {
-          // Fallback to regular endpoint if admin endpoint doesn't exist
-          data = await apiClient.getAllOrders()
-        }
+  const fetchOrders = useCallback(async () => {
+    try {
+      setError(null)
+      const data = await apiClient.getAllOrders()
+      if (isMounted.current) {
         const sorted = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         setOrders(sorted.slice(0, 5))
-      } catch (err) {
+      }
+    } catch (err) {
+      if (isMounted.current) {
         setError("Failed to load recent orders")
         console.error("Error fetching orders:", err)
-      } finally {
+      }
+    } finally {
+      if (isMounted.current) {
         setIsLoading(false)
       }
     }
+  }, [])
 
+  useEffect(() => {
+    isMounted.current = true
     fetchOrders()
 
-    const interval = setInterval(fetchOrders, 20000)
-    return () => clearInterval(interval)
-  }, [])
+    const interval = setInterval(fetchOrders, 30000)
+    return () => {
+      isMounted.current = false
+      clearInterval(interval)
+    }
+  }, [fetchOrders])
 
   if (error) {
     return (

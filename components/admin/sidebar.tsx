@@ -3,18 +3,18 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useRouter } from "next/navigation"
-import { logoutAdmin } from "@/lib/admin-auth"
+import { useAdminAuth } from "@/hooks/use-auth"
 import { BarChart3, Package, Settings, LogOut } from "lucide-react"
 
 export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const { logout } = useAdminAuth()
 
   const isActive = (path: string) => pathname === path
 
   const handleLogout = () => {
-    logoutAdmin()
-    router.push("/login")
+    logout()
   }
 
   return (

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,6 @@ const statusColors = {
 
 export function OrdersTable() {
   const [orders, setOrders] = useState<Order[]>([])
-  const [filteredOrders, setFilteredOrders] = useState<Order[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -28,14 +27,7 @@ export function OrdersTable() {
       try {
         setIsLoading(true)
         setError(null)
-        // Try admin endpoint first, fallback to regular endpoint
-        let data
-        try {
-          data = await apiClient.getAllOrdersAdmin()
-        } catch {
-          // Fallback to regular endpoint if admin endpoint doesn't exist
-          data = await apiClient.getAllOrders()
-        }
+        const data = await apiClient.getAllOrders()
         setOrders(data)
       } catch (err) {
         setError("Failed to load orders. Make sure the backend is running.")
@@ -48,15 +40,14 @@ export function OrdersTable() {
     fetchOrders()
   }, [])
 
-  useEffect(() => {
-    const filtered = orders.filter((order) => {
+  const filteredOrders = useMemo(() => {
+    return orders.filter((order) => {
       const matchesSearch =
         order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.customerInfo.name.toLowerCase().includes(searchTerm.toLowerCase())
       const matchesStatus = !selectedStatus || order.status === selectedStatus
       return matchesSearch && matchesStatus
     })
-    setFilteredOrders(filtered)
   }, [orders, searchTerm, selectedStatus])
 
   const handleStatusChange = async (orderId: string, newStatus: "ordered" | "shipped" | "completed", note?: string) => {

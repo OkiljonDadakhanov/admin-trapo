@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { authAPI } from "@/lib/api"
 import type { User } from "@/lib/api"
 import { useCustomToast } from "@/components/custom-toast"
-import { User as UserIcon, LogOut, Mail, User } from "lucide-react"
+import { User as UserIcon, LogOut, Mail } from "lucide-react"
 import Link from "next/link"
 
 export default function ProfilePage() {
@@ -74,7 +74,7 @@ export default function ProfilePage() {
 
           <div className="space-y-4">
             <div className="flex items-center gap-3 p-4 bg-background/50 rounded-lg">
-              <User className="w-5 h-5 text-muted-foreground" />
+              <UserIcon className="w-5 h-5 text-muted-foreground" />
               <div>
                 <p className="text-sm text-muted-foreground">Full Name</p>
                 <p className="font-medium">{user.name}</p>

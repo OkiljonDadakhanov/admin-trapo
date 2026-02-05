@@ -1,41 +1,57 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { TrendingUp, ShoppingCart, DollarSign, Users, AlertCircle } from "lucide-react"
-import { apiClient, type Order } from "@/lib/api-client"
+import { apiClient, type DashboardStats } from "@/lib/api-client"
 
 export function DashboardOverview() {
-  const [orders, setOrders] = useState<Order[]>([])
+  const [stats, setStats] = useState<DashboardStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isMounted = useRef(true)
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      try {
+  const fetchStats = useCallback(async () => {
+    try {
+      if (isLoading === false) {
+        // Don't show loading spinner on refresh, only on initial load
+      } else {
         setIsLoading(true)
-        setError(null)
-        const data = await apiClient.getAllOrders()
-        setOrders(data)
-      } catch (err) {
+      }
+      setError(null)
+      const data = await apiClient.getDashboardStats()
+      if (isMounted.current) {
+        setStats(data)
+      }
+    } catch (err) {
+      if (isMounted.current) {
         setError("Failed to load dashboard data")
-        console.error("Error fetching orders:", err)
-      } finally {
+        console.error("Error fetching dashboard stats:", err)
+      }
+    } finally {
+      if (isMounted.current) {
         setIsLoading(false)
       }
     }
+  }, [isLoading])
 
-    fetchOrders()
+  useEffect(() => {
+    isMounted.current = true
+    fetchStats()
 
-    const interval = setInterval(fetchOrders, 30000)
-    return () => clearInterval(interval)
+    const interval = setInterval(fetchStats, 30000)
+    return () => {
+      isMounted.current = false
+      clearInterval(interval)
+    }
   }, [])
 
-  const totalRevenue = orders.reduce((sum, order) => sum + order.payment.total, 0)
-  const totalOrders = orders.length
-  const pendingOrders = orders.filter((o) => o.status === "pending").length
-  const completedOrders = orders.filter((o) => o.status === "completed").length
-  const uniqueCustomers = new Set(orders.map((o) => o.userId)).size
+  const totalRevenue = stats?.totalRevenue || 0
+  const totalOrders = stats?.totalOrders || 0
+  const totalUsers = stats?.totalUsers || 0
+  const recentOrders = stats?.recentOrders || []
+  const pendingOrders = recentOrders.filter((o) => o.status === "ordered").length
+  const completedOrders = recentOrders.filter((o) => o.status === "completed").length
 
   const metrics = [
     {
@@ -53,9 +69,9 @@ export function DashboardOverview() {
       color: "text-blue-500",
     },
     {
-      label: "Customers",
-      value: uniqueCustomers.toString(),
-      change: "+5.1%",
+      label: "Total Users",
+      value: totalUsers.toString(),
+      change: "Registered users",
       icon: Users,
       color: "text-purple-500",
     },
